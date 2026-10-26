@@ -1,0 +1,5 @@
+# dsh-kanban — 加载看板的宿主插件。
+# 这个文件由 profile 的 patch 层引入；面板入口由 client 半部分自动注册。
+- insert:
+    - id: dsh-kanban
+      name: dsh-kanban

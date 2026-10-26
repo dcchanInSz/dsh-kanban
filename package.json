@@ -1,0 +1,68 @@
+{
+  "name": "dsh-kanban",
+  "version": "0.1.0",
+  "description": "任务看板插件：列 + 卡片 + 拖拽，与当前会话的 todo 打通，agent 可通过 kanban_* 工具读写。Kanban board for DSH with session-todo sync and agent tools.",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "kanban",
+    "task-board",
+    "todo"
+  ],
+  "license": "MIT",
+  "author": "dcchanInSz",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dcchanInSz/dsh-kanban.git"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dsh": {
+    "engines": {
+      "dsh": ">=0.2.0-rc.2"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    },
+    "compatibility": {
+      "dsh": "0.2.0-rc.2",
+      "profiles": [
+        "desktop",
+        "web"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build-client.mjs",
+    "dev": "node scripts/build-client.mjs --watch",
+    "test": "node --test test/*.test.mjs",
+    "check": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.9",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}
