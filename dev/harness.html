@@ -16,6 +16,11 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // 截图用：?pad=120 让内容下移，避开浏览器 HUD 浮层。
+      const pad = new URLSearchParams(location.search).get('pad')
+      if (pad) document.body.style.paddingTop = `${Number(pad)}px`
+    </script>
     <script src="./harness.js"></script>
   </body>
 </html>

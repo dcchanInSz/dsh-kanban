@@ -20,6 +20,9 @@
 - **左侧栏一个「任务看板」入口**，点开在主区域铺满三列：待办 / 进行中 / 已完成
 - **卡片**支持新建、双击改标题、拖拽换列和排序、两步删除、归档
 - **卡片可以带提示词**：点「执行」就在一个新会话里把这段提示词发出去，agent 直接开干，卡片自动进「进行中」并留下会话链接
+- **跑完自动归档**：那个会话的 agent 一结束，卡片自己移到「已完成」（可在 ⚙ 里关掉）
+- **多块看板**：默认看板之外可以新建多块，随手切换、改名、删除（同一份 board.json，互不干扰）
+- **按会话过滤**：下拉选一个会话，只看它同步/执行过的卡片
 - **和会话打通**：agent 每次写 `todo_write`，插件会把 todo 同步成卡片，状态跟着走
 - **agent 可读写**：6 个 `kanban_*` 工具，agent 能自己建卡、移卡、改卡、删卡
 - **落盘**：数据存在 `$DSH_HOME/integrations/dsh-kanban/board.json`，换窗口、重开会话都不丢
@@ -68,6 +71,9 @@ dsh plugin --profile desktop remove dsh-kanban
 | 卡片上 ✨ 的那行 | 点一下就地编辑提示词；没有提示词的卡片 hover 时出现「＋提示词」 |
 | 卡片上「▶ 执行」 | 新建一个会话，把提示词原文发进去跑起来，卡片自动移到「进行中」 |
 | 卡片上「打开会话」 | 跳回上次执行这个任务的会话（列表里也有） |
+| 右上「默认看板 ▾」 | 切换看板、新建、重命名、删除 |
+| 右上「全部会话 ▾」 | 按会话过滤卡片，只显示这个会话相关的 |
+| 右上「⚙」 | 同步会话 todo / 跑完自动进「已完成」两个开关 |
 | 右上「同步会话 todo」 | 关掉后 agent 的 todo 不再自动建卡 |
 
 #### 关于「同步会话 todo」
@@ -92,6 +98,8 @@ dsh plugin --profile desktop remove dsh-kanban
 
 所以每个任务都是在干净的上下文里跑的，不会污染你正在看的对话；卡片上留「打开会话」，随时能回去看它干到哪了。
 
+**自动归档**：插件监听 `agent/status`，看到「这个会话先 running 后 idle」才算一次执行结束，把指向它的卡片移到「已完成」并记下 `lastRun.finishedAt`。只认这个顺序，所以会话还没真正开跑就 idle 的抖动不会误判。
+
 发给 agent 的只有**提示词原文**，标题和备注只给人看。执行过的卡片会被标记，之后 todo 同步不会再把它的列改掉。
 
 ## 给 agent 的工具
@@ -104,6 +112,9 @@ dsh plugin --profile desktop remove dsh-kanban
 | `kanban_update` | 改标题 / 备注 / 提示词 |
 | `kanban_delete` | 删除卡片 |
 | `kanban_sync_todos` | 立刻把当前会话的 todo 同步一次 |
+| `kanban_boards` | 列出所有看板，或新建 / 切换到某块看板 |
+
+`kanban_list / add / move / update / delete` 都接受可选的 `board`（看板名），默认操作当前看板。
 
 对着 agent 说「把这 5 件事排进看板」它就会用 `kanban_add` 建卡；说「第一件做完了」它会 `kanban_move`。
 
@@ -113,14 +124,15 @@ dsh plugin --profile desktop remove dsh-kanban
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "revision": 12,
-  "columns": [
-    { "id": "backlog", "title": "待办" },
-    { "id": "doing", "title": "进行中" },
-    { "id": "done", "title": "已完成" }
-  ],
-  "cards": [
+  "activeBoardId": "b_default",
+  "boards": [
+    {
+      "id": "b_default",
+      "name": "默认看板",
+      "createdAt": 1761400000000,
+      "cards": [
     {
       "id": "c_1a2b3c4d",
       "title": "写 README",
@@ -131,14 +143,18 @@ dsh plugin --profile desktop remove dsh-kanban
       "source": { "kind": "todo", "sessionId": "s_abc", "key": "9f2c1e7d3a4b" },
       "todoStatus": "in_progress",
       "prompt": "把 README 的安装章节重写，中文为主",
-      "lastRun": { "sessionId": "session-9f2c", "at": 1761400700000 },
+      "lastRun": { "sessionId": "session-9f2c", "at": 1761400700000, "finishedAt": 1761400900000 },
       "pinned": true
+        }
+      ]
     }
   ],
   "deleted": [{ "sessionId": "s_abc", "key": "aabbccdd", "at": 1761400600000 }],
-  "settings": { "autoSyncTodos": true }
+  "settings": { "autoSyncTodos": true, "autoCompleteOnRun": true }
 }
 ```
+
+v1 的旧文件（根上有 `cards`）会在第一次读取时自动迁移成一块「默认看板」，卡片、提示词、执行记录都保留。
 
 写入是串行的「读-改-写 + 临时文件 + rename」，不会出现半截文件。
 

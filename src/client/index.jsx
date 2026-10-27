@@ -43,13 +43,26 @@ export function apply(ctx) {
   const api = createApi(ctx.connection)
   const runner = createRunner(ctx)
 
+  // Session titles for the filter menu; falls back to a short id.
+  let sessions
+  ctx.inject?.(['sessions'], (scope) => { sessions = scope.sessions })
+  const sessionTitle = (id) => {
+    try {
+      const rows = sessions?.list?.getSnapshot?.()?.items ?? []
+      const row = rows.find((item) => item.sessionId === id)
+      return row?.title || id.slice(0, 8)
+    } catch {
+      return id.slice(0, 8)
+    }
+  }
+
   ctx.effect(() => {
     const disposeStyles = installStyles()
 
     const stopPanel = ctx.slots.inject('main', () => ctx.slots.register({
       name: 'main',
       key: PANEL_KEY,
-    }, () => <KanbanPanel api={api} runner={runner} />))
+    }, () => <KanbanPanel api={api} runner={runner} sessionTitle={sessionTitle} />))
 
     const stopSidebar = ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
       name: 'sidebar.panellist',

@@ -1,6 +1,6 @@
 {
   "name": "dsh-kanban",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "任务看板插件：列 + 卡片 + 拖拽，与当前会话的 todo 打通，agent 可通过 kanban_* 工具读写。Kanban board for DSH with session-todo sync and agent tools.",
   "type": "module",
   "main": "./lib/index.js",

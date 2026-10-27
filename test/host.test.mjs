@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, readFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -61,8 +61,9 @@ test('把看板读写、工具和 todo 同步都走一遍', async (t) => {
     assert.equal(result.value.board.cards.length, 1)
 
     const raw = JSON.parse(await readFile(join(home, 'integrations', 'dsh-kanban', 'board.json'), 'utf8'))
-    assert.equal(raw.cards[0].title, '写文档')
-    assert.equal(raw.cards[0].note, 'README')
+    assert.equal(raw.version, 2)
+    assert.equal(raw.boards[0].cards[0].title, '写文档')
+    assert.equal(raw.boards[0].cards[0].note, 'README')
   })
 
   await t.test('移动到进行中并改标题', async () => {
@@ -208,14 +209,62 @@ test('把看板读写、工具和 todo 同步都走一遍', async (t) => {
     assert.ok(ran)
 
     const raw = JSON.parse(await readFile(join(home, 'integrations', 'dsh-kanban', 'board.json'), 'utf8'))
-    const stored = raw.cards.find((card) => card.id === ran.id)
+    const stored = raw.boards.flatMap((entry) => entry.cards).find((card) => card.id === ran.id)
     assert.equal(stored.prompt, '跑一下')
     assert.equal(stored.lastRun.sessionId, 'session-abc')
   })
 
+  await t.test('多看板：新建 / 切换 / 重命名 / 删除', async () => {
+    const created = await call(state.rpc, 'boards.create', { name: '项目 A' })
+    assert.equal(created.ok, true)
+    const nextId = created.value.board.activeBoardId
+    assert.equal(created.value.board.activeBoardName, '项目 A')
+    assert.equal(created.value.board.cards.length, 0, '新看板是空的')
+    assert.equal(created.value.board.boards.length, 2)
+
+    const added = await call(state.rpc, 'board.addCard', { title: '项目 A 的任务' })
+    assert.equal(added.value.board.cards.length, 1)
+
+    const renamed = await call(state.rpc, 'boards.rename', { id: nextId, name: '项目 A2' })
+    assert.equal(renamed.value.board.activeBoardName, '项目 A2')
+
+    const firstId = renamed.value.board.boards.find((entry) => entry.id !== nextId).id
+    const switched = await call(state.rpc, 'boards.select', { id: firstId })
+    assert.equal(switched.value.board.activeBoardId, firstId)
+    assert.equal(switched.value.board.cards.some((card) => card.title === '项目 A 的任务'), false, '看不到另一块板的卡')
+
+    const deleted = await call(state.rpc, 'boards.delete', { id: nextId })
+    assert.equal(deleted.value.board.boards.length, 1)
+
+    const last = await call(state.rpc, 'boards.delete', { id: firstId })
+    assert.equal(last.ok, false)
+    assert.equal(last.error.code, 'kanban/last-board')
+  })
+
+  await t.test('会话跑完自动进「已完成」', async () => {
+    const created = await call(state.rpc, 'board.addCard', { title: '会自动完成的任务', prompt: '跑一下' })
+    const id = created.value.card.id
+    await call(state.rpc, 'board.markRun', { id, sessionId: 'session-auto' })
+
+    const status = state.listeners.get('agent/status')
+    assert.equal(typeof status, 'function')
+
+    status({ agent: { id: 'session-auto' }, status: 'running' })
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    let board = (await call(state.rpc, 'board.get')).value.board
+    assert.equal(board.cards.find((card) => card.id === id).column, 'doing', '运行中还在进行中')
+
+    status({ agent: { id: 'session-auto' }, status: 'idle' })
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    board = (await call(state.rpc, 'board.get')).value.board
+    const card = board.cards.find((entry) => entry.id === id)
+    assert.equal(card.column, 'done', '结束后进已完成')
+    assert.ok(Number.isInteger(card.lastRun.finishedAt), '记录了完成时间')
+  })
+
   await t.test('agent 工具注册齐全且可用', async () => {
     const names = state.tools.map((tool) => tool.name).sort()
-    assert.deepEqual(names, ['kanban_add', 'kanban_delete', 'kanban_list', 'kanban_move', 'kanban_sync_todos', 'kanban_update'])
+    assert.deepEqual(names, ['kanban_add', 'kanban_boards', 'kanban_delete', 'kanban_list', 'kanban_move', 'kanban_sync_todos', 'kanban_update'])
 
     for (const tool of state.tools) {
       assert.equal(typeof tool.execute, 'function')
@@ -237,4 +286,48 @@ test('把看板读写、工具和 todo 同步都走一遍', async (t) => {
     const moved = await move.execute({ title: '来自 agent 的卡片', column: 'done' }, {})
     assert.match(moved.message, /已完成/)
   })
+})
+
+
+test('v1 的单看板文件会迁移成 v2 的默认看板', async (t) => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-kanban-migrate-'))
+  const dir = join(home, 'integrations', 'dsh-kanban')
+  await mkdir(dir, { recursive: true })
+  await writeFile(join(dir, 'board.json'), JSON.stringify({
+    version: 1,
+    revision: 7,
+    columns: [
+      { id: 'backlog', title: '待办' },
+      { id: 'doing', title: '进行中' },
+      { id: 'done', title: '已完成' },
+    ],
+    cards: [{
+      id: 'c_legacy01',
+      title: '老数据里的卡片',
+      note: '迁移后要还在',
+      column: 'doing',
+      createdAt: 1761000000000,
+      updatedAt: 1761000000000,
+      prompt: '跑一下',
+    }],
+    deleted: [],
+    settings: { autoSyncTodos: true },
+  }), 'utf8')
+
+  process.env.DSH_HOME = home
+  const { ctx, state } = fakeContext()
+  const dispose = apply(ctx, {})
+  t.after(async () => { dispose?.(); await rm(home, { recursive: true, force: true }) })
+
+  const result = await call(state.rpc, 'board.get')
+  assert.equal(result.ok, true)
+  const board = result.value.board
+  assert.equal(board.boards.length, 1)
+  assert.equal(board.activeBoardName, '默认看板')
+  assert.equal(board.revision, 7, '保留原来的 revision')
+  assert.equal(board.cards.length, 1)
+  assert.equal(board.cards[0].title, '老数据里的卡片')
+  assert.equal(board.cards[0].column, 'doing')
+  assert.equal(board.cards[0].prompt, '跑一下')
+  assert.equal(board.settings.autoCompleteOnRun, true, '新设置项有默认值')
 })

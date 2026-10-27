@@ -29,5 +29,9 @@ export function createApi(connection) {
     deleteCard: (input) => call('board.deleteCard', input),
     clearColumn: (column) => call('board.clearColumn', { column }),
     setSettings: (settings) => call('board.setSettings', settings),
+    selectBoard: (id) => call('boards.select', { id }),
+    createBoard: (name) => call('boards.create', { name }),
+    renameBoard: (input) => call('boards.rename', input),
+    deleteBoard: (id) => call('boards.delete', { id }),
   }
 }
