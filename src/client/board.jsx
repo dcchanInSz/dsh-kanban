@@ -60,7 +60,6 @@ function Menu({ label, title, children, width = 230, align = 'end' }) {
         <div
           className="dkb-menu"
           style={{ width, [align === 'end' ? 'right' : 'left']: 0 }}
-          onClick={() => setOpen(false)}
         >
           {typeof children === 'function' ? children(() => setOpen(false)) : children}
         </div>
@@ -340,6 +339,7 @@ export function KanbanPanel({ api, runner, sessionTitle = (id) => id.slice(0, 8)
   const [runningId, setRunningId] = useState(null)
   const [sessionFilter, setSessionFilter] = useState('all')
   const [boardForm, setBoardForm] = useState(null) // 'create' | 'rename'
+  const [deleteArmed, setDeleteArmed] = useState(false)
 
   const dragIdRef = useRef(null)
   dragIdRef.current = dragId
@@ -487,8 +487,15 @@ export function KanbanPanel({ api, runner, sessionTitle = (id) => id.slice(0, 8)
   }
 
   const deleteBoard = async () => {
+    setDeleteArmed(false)
     setSessionFilter('all')
     await run(() => api.deleteBoard(board.activeBoardId))
+  }
+
+  /** Board deletion is not recoverable, so it takes a second click. */
+  const armDeleteBoard = () => {
+    setDeleteArmed(true)
+    setTimeout(() => setDeleteArmed(false), DELETE_ARM_MS)
   }
 
   const computeDropIndex = (event, body) => {
@@ -531,13 +538,13 @@ export function KanbanPanel({ api, runner, sessionTitle = (id) => id.slice(0, 8)
           title="切换 / 管理看板"
           width={240}
         >
-          {() => (
+          {(close) => (
             <>
               {boards.map((entry) => (
                 <MenuItem
                   key={entry.id}
                   active={entry.active}
-                  onClick={() => switchBoard(entry.id)}
+                  onClick={() => { close(); switchBoard(entry.id) }}
                 >
                   {entry.name}
                   <span className="dkb-menucount">{entry.cardCount}</span>
@@ -548,7 +555,7 @@ export function KanbanPanel({ api, runner, sessionTitle = (id) => id.slice(0, 8)
                 ? (
                   <InlineInput
                     placeholder="看板名称，比如「项目 A」"
-                    onSubmit={createBoard}
+                    onSubmit={(name) => { close(); createBoard(name) }}
                     onCancel={() => setBoardForm(null)}
                   />
                 )
@@ -557,12 +564,22 @@ export function KanbanPanel({ api, runner, sessionTitle = (id) => id.slice(0, 8)
                 ? (
                   <InlineInput
                     initial={board.activeBoardName}
-                    onSubmit={renameBoard}
+                    onSubmit={(name) => { close(); renameBoard(name) }}
                     onCancel={() => setBoardForm(null)}
                   />
                 )
                 : <MenuItem onClick={() => setBoardForm('rename')}>✎ 重命名这块看板</MenuItem>}
-              <MenuItem danger onClick={deleteBoard}>🗑 删除这块看板</MenuItem>
+              {deleteArmed
+                ? (
+                  <MenuItem danger onClick={() => { close(); deleteBoard() }}>
+                    确认删除「{board.activeBoardName}」（{allCards} 张卡片）
+                  </MenuItem>
+                )
+                : (
+                  <MenuItem danger onClick={armDeleteBoard}>
+                    🗑 删除这块看板
+                  </MenuItem>
+                )}
             </>
           )}
         </Menu>
