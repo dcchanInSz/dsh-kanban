@@ -23,6 +23,8 @@ export function createApi(connection) {
     get: (signal) => call('board.get', {}, signal),
     addCard: (input) => call('board.addCard', input),
     updateCard: (input) => call('board.updateCard', input),
+    setPrompt: (input) => call('board.setPrompt', input),
+    markRun: (input) => call('board.markRun', input),
     moveCard: (input) => call('board.moveCard', input),
     deleteCard: (input) => call('board.deleteCard', input),
     clearColumn: (column) => call('board.clearColumn', { column }),

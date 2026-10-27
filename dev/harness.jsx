@@ -49,6 +49,7 @@ let board = {
       id: 'c_c9d0e1f2',
       title: '写 README 和安装说明',
       note: '包含 dsh plugin add 的用法、版本兼容表',
+      prompt: '把 README 补完：安装两种方式、同步规则表、kanban_* 工具说明，中文为主。',
       column: 'doing',
       createdAt: now - 7_200_000,
       updatedAt: now - 600_000,
@@ -113,6 +114,26 @@ const mockApi = {
       draft.cards.splice(index, 0, card)
     })
   },
+  async setPrompt({ id, prompt }) {
+    await delay()
+    return commit((draft) => {
+      const card = draft.cards.find((entry) => entry.id === id)
+      if (!card) return
+      if (prompt && prompt.trim()) card.prompt = prompt.trim()
+      else delete card.prompt
+      card.updatedAt = Date.now()
+    })
+  },
+  async markRun({ id, sessionId }) {
+    await delay()
+    return commit((draft) => {
+      const card = draft.cards.find((entry) => entry.id === id)
+      if (!card) return
+      card.lastRun = { sessionId, at: Date.now() }
+      card.column = 'doing'
+      card.updatedAt = Date.now()
+    })
+  },
   async deleteCard({ id }) {
     await delay()
     return commit((draft) => { draft.cards = draft.cards.filter((entry) => entry.id !== id) })
@@ -127,4 +148,14 @@ const mockApi = {
   },
 }
 
-createRoot(document.getElementById('root')).render(<KanbanPanel api={mockApi} />)
+const mockRunner = {
+  canOpenSession: () => true,
+  async run(prompt) {
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    console.log('[harness] 会发进新会话的提示词：', prompt)
+    return `s_${Math.random().toString(16).slice(2, 10)}`
+  },
+  open(sessionId) { console.log('[harness] 打开会话', sessionId) },
+}
+
+createRoot(document.getElementById('root')).render(<KanbanPanel api={mockApi} runner={mockRunner} />)

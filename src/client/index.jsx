@@ -9,6 +9,7 @@
 import * as React from 'react'
 import { KanbanPanel } from './board.jsx'
 import { createApi } from './rpc.js'
+import { createRunner } from './runner.js'
 import { installStyles } from './styles.js'
 
 export const name = 'kanban-client'
@@ -40,6 +41,7 @@ function KanbanIcon({ size = 16 } = {}) {
 
 export function apply(ctx) {
   const api = createApi(ctx.connection)
+  const runner = createRunner(ctx)
 
   ctx.effect(() => {
     const disposeStyles = installStyles()
@@ -47,7 +49,7 @@ export function apply(ctx) {
     const stopPanel = ctx.slots.inject('main', () => ctx.slots.register({
       name: 'main',
       key: PANEL_KEY,
-    }, () => <KanbanPanel api={api} />))
+    }, () => <KanbanPanel api={api} runner={runner} />))
 
     const stopSidebar = ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
       name: 'sidebar.panellist',

@@ -170,6 +170,49 @@ test('把看板读写、工具和 todo 同步都走一遍', async (t) => {
     assert.equal(board.cards.some((entry) => entry.title === '不该出现'), false)
   })
 
+  await t.test('卡片可以带提示词', async () => {
+    const created = await call(state.rpc, 'board.addCard', {
+      title: '带提示词的任务',
+      prompt: '  把 README 的安装章节重写一遍  ',
+    })
+    assert.equal(created.ok, true)
+    const card = created.value.card
+    assert.equal(card.prompt, '把 README 的安装章节重写一遍', '提示词会被 trim')
+
+    const cleared = await call(state.rpc, 'board.setPrompt', { id: card.id, prompt: '   ' })
+    assert.equal(cleared.value.board.cards.find((entry) => entry.id === card.id).prompt, undefined, '空白提示词会被清掉')
+
+    const rewritten = await call(state.rpc, 'board.setPrompt', { id: card.id, prompt: '凌晨两点跑步' })
+    assert.equal(rewritten.value.board.cards.find((entry) => entry.id === card.id).prompt, '凌晨两点跑步')
+  })
+
+  await t.test('记录执行：写入会话 id 并移到进行中', async () => {
+    const created = await call(state.rpc, 'board.addCard', { title: '要跑的任务', prompt: '跑一下' })
+    const id = created.value.card.id
+
+    const ran = await call(state.rpc, 'board.markRun', { id, sessionId: 'session-abc' })
+    assert.equal(ran.ok, true)
+    const card = ran.value.board.cards.find((entry) => entry.id === id)
+    assert.equal(card.column, 'doing', '执行后进「进行中」')
+    assert.deepEqual(card.lastRun && { sessionId: card.lastRun.sessionId }, { sessionId: 'session-abc' })
+    assert.equal(card.pinned, true, '手动执行过的卡片不再被 todo 同步改列')
+
+    const missing = await call(state.rpc, 'board.markRun', { id, sessionId: '' })
+    assert.equal(missing.ok, false)
+    assert.equal(missing.error.code, 'kanban/bad-session')
+  })
+
+  await t.test('提示词和执行记录能落盘再读回来', async () => {
+    const board = (await call(state.rpc, 'board.get')).value.board
+    const ran = board.cards.find((card) => card.lastRun?.sessionId === 'session-abc')
+    assert.ok(ran)
+
+    const raw = JSON.parse(await readFile(join(home, 'integrations', 'dsh-kanban', 'board.json'), 'utf8'))
+    const stored = raw.cards.find((card) => card.id === ran.id)
+    assert.equal(stored.prompt, '跑一下')
+    assert.equal(stored.lastRun.sessionId, 'session-abc')
+  })
+
   await t.test('agent 工具注册齐全且可用', async () => {
     const names = state.tools.map((tool) => tool.name).sort()
     assert.deepEqual(names, ['kanban_add', 'kanban_delete', 'kanban_list', 'kanban_move', 'kanban_sync_todos', 'kanban_update'])
@@ -181,13 +224,14 @@ test('把看板读写、工具和 todo 同步都走一遍', async (t) => {
     }
 
     const add = state.tools.find((tool) => tool.name === 'kanban_add')
-    const added = await add.execute({ title: '来自 agent 的卡片' }, {})
+    const added = await add.execute({ title: '来自 agent 的卡片', prompt: '顺便跑个测试' }, {})
     assert.equal(added.ok, true)
     assert.match(added.message, /已添加卡片/)
 
     const list = state.tools.find((tool) => tool.name === 'kanban_list')
     const listed = await list.execute({}, {})
     assert.match(listed.message, /来自 agent 的卡片/)
+    assert.match(listed.message, /✨有提示词/)
 
     const move = state.tools.find((tool) => tool.name === 'kanban_move')
     const moved = await move.execute({ title: '来自 agent 的卡片', column: 'done' }, {})

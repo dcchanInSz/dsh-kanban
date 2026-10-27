@@ -272,6 +272,83 @@ const CSS = String.raw`
 .dkb-btn.primary { background: var(--dkb-accent); border-color: var(--dkb-accent); color: #fff; }
 .dkb-btn.primary:hover { filter: brightness(1.05); color: #fff; }
 
+/* 提示词与执行 */
+.dkb-prompt {
+  display: flex;
+  gap: 5px;
+  align-items: flex-start;
+  width: 100%;
+  margin-top: 6px;
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--dkb-chip);
+  color: var(--dkb-dim);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+.dkb-prompt:hover { border-color: var(--dkb-border-strong); color: var(--dkb-text); }
+.dkb-prompt-mark { flex: 0 0 auto; font-size: 10px; line-height: 1.6; }
+.dkb-prompt-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.dkb-prompt-editor { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.dkb-prompt-editor textarea,
+.dkb-prompt-input {
+  width: 100%;
+  min-height: 62px;
+  resize: vertical;
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1.5;
+  padding: 6px 7px;
+  border-radius: 7px;
+  border: 1px solid var(--dkb-accent);
+  background: var(--dkb-surface);
+  color: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.dkb-linkbtn {
+  border: 0;
+  background: transparent;
+  padding: 0 2px;
+  color: var(--dkb-faint);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dkb-linkbtn:hover { color: var(--dkb-accent); }
+.dkb-addprompt { opacity: 0; transition: opacity 0.12s ease; }
+.dkb-card:hover .dkb-addprompt { opacity: 1; }
+
+.dkb-run {
+  border: 1px solid var(--dkb-accent);
+  background: var(--dkb-accent-soft);
+  color: var(--dkb-accent);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dkb-run:hover { background: var(--dkb-accent); color: #fff; }
+
+.dkb-running { font-size: 10px; color: var(--dkb-accent); }
+.dkb-card.is-running { border-color: var(--dkb-accent); }
+
 .dkb-empty { font-size: 11px; color: var(--dkb-faint); text-align: center; padding: 10px 6px; }
 .dkb-loading { font-size: 12px; color: var(--dkb-faint); padding: 40px 22px; }
 `

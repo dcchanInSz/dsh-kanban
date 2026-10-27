@@ -1,5 +1,5 @@
 /**
- * The board itself: three columns, draggable cards, inline editing.
+ * The board itself: three columns, draggable cards, prompts and one-click runs.
  */
 
 import * as React from 'react'
@@ -22,16 +22,53 @@ function DropLine() {
   return <div className="dkb-drop-line" />
 }
 
+function PromptEditor({ value, onSave, onCancel }) {
+  const [text, setText] = useState(value ?? '')
+  const input = useRef(null)
+
+  useEffect(() => { input.current?.focus() }, [])
+
+  return (
+    <div className="dkb-prompt-editor" onClick={(event) => event.stopPropagation()}>
+      <textarea
+        ref={input}
+        value={text}
+        placeholder="写给 agent 的提示词；留空则清除"
+        onChange={(event) => setText(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault()
+            onSave(text)
+          } else if (event.key === 'Escape') {
+            event.preventDefault()
+            onCancel()
+          }
+        }}
+      />
+      <div className="dkb-composer-actions">
+        <button type="button" className="dkb-btn" onClick={onCancel}>取消</button>
+        <button type="button" className="dkb-btn primary" onClick={() => onSave(text)}>保存</button>
+      </div>
+    </div>
+  )
+}
+
 function Composer({ onSubmit, onCancel }) {
   const [text, setText] = useState('')
+  const [prompt, setPrompt] = useState('')
+  const [showPrompt, setShowPrompt] = useState(false)
   const input = useRef(null)
 
   useEffect(() => { input.current?.focus() }, [])
 
   const submit = async () => {
     if (text.trim().length === 0) return
-    const ok = await onSubmit(text)
-    if (ok) setText('')
+    const ok = await onSubmit(text, prompt)
+    if (ok) {
+      setText('')
+      setPrompt('')
+      setShowPrompt(false)
+    }
   }
 
   return (
@@ -51,6 +88,20 @@ function Composer({ onSubmit, onCancel }) {
           }
         }}
       />
+      {showPrompt
+        ? (
+          <textarea
+            className="dkb-prompt-input"
+            value={prompt}
+            placeholder="提示词（可选）：点「执行」时把这段原文发进一个新会话"
+            onChange={(event) => setPrompt(event.target.value)}
+          />
+        )
+        : (
+          <button type="button" className="dkb-linkbtn" onClick={() => setShowPrompt(true)}>
+            ＋ 添加提示词
+          </button>
+        )}
       <div className="dkb-composer-actions">
         <button type="button" className="dkb-btn" onClick={onCancel}>取消</button>
         <button type="button" className="dkb-btn primary" onClick={submit}>添加</button>
@@ -59,7 +110,12 @@ function Composer({ onSubmit, onCancel }) {
   )
 }
 
-function Card({ card, dragging, editing, armed, onDragStart, onDragEnd, onStartEdit, onCommitEdit, onCancelEdit, onArmDelete, onDelete }) {
+function Card({
+  card, dragging, editing, editingPrompt, armed, running,
+  onDragStart, onDragEnd, onStartEdit, onCommitEdit, onCancelEdit,
+  onStartPrompt, onSavePrompt, onCancelPrompt, onArmDelete, onDelete,
+  onRun, onOpenSession,
+}) {
   const [draft, setDraft] = useState(card.title)
 
   useEffect(() => { setDraft(card.title) }, [card.title, editing])
@@ -70,17 +126,17 @@ function Card({ card, dragging, editing, armed, onDragStart, onDragEnd, onStartE
       ? <span className="dkb-badge agent">agent</span>
       : null
 
-  const classes = ['dkb-card', dragging && 'is-dragging', card.column === 'done' && 'is-done']
+  const classes = ['dkb-card', dragging && 'is-dragging', card.column === 'done' && 'is-done', running && 'is-running']
     .filter(Boolean).join(' ')
 
   return (
     <article
       data-card-id={card.id}
       className={classes}
-      draggable={!editing}
+      draggable={!editing && !editingPrompt}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      onDoubleClick={(event) => { if (!editing) { event.preventDefault(); onStartEdit() } }}
+      onDoubleClick={(event) => { if (!editing && !editingPrompt) { event.preventDefault(); onStartEdit() } }}
     >
       {editing
         ? (
@@ -99,9 +155,64 @@ function Card({ card, dragging, editing, armed, onDragStart, onDragEnd, onStartE
 
       {card.note ? <div className="dkb-note">{card.note}</div> : null}
 
+      {editingPrompt
+        ? <PromptEditor value={card.prompt} onSave={onSavePrompt} onCancel={onCancelPrompt} />
+        : card.prompt
+          ? (
+            <button
+              type="button"
+              className="dkb-prompt"
+              title="点击编辑提示词"
+              onClick={(event) => { event.stopPropagation(); onStartPrompt() }}
+            >
+              <span className="dkb-prompt-mark">✨</span>
+              <span className="dkb-prompt-text">{card.prompt}</span>
+            </button>
+          )
+          : null}
+
       <div className="dkb-meta">
         {badge}
         <span>{relativeTime(card.updatedAt)}</span>
+        <span className="dkb-spacer" />
+        {running ? <span className="dkb-running">启动中…</span> : null}
+        {!running && card.prompt
+          ? (
+            <button
+              type="button"
+              className="dkb-run"
+              title="在新会话里用这条提示词执行"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => { event.stopPropagation(); onRun() }}
+            >
+              ▶ 执行
+            </button>
+          )
+          : null}
+        {!running && card.lastRun?.sessionId
+          ? (
+            <button
+              type="button"
+              className="dkb-linkbtn"
+              title="打开上次执行这个任务的会话"
+              onClick={(event) => { event.stopPropagation(); onOpenSession(card.lastRun.sessionId) }}
+            >
+              打开会话
+            </button>
+          )
+          : null}
+        {!card.prompt && !editingPrompt
+          ? (
+            <button
+              type="button"
+              className="dkb-linkbtn dkb-addprompt"
+              title="给这张卡片加一条提示词"
+              onClick={(event) => { event.stopPropagation(); onStartPrompt() }}
+            >
+              ＋提示词
+            </button>
+          )
+          : null}
         <button
           type="button"
           className={'dkb-del' + (armed ? ' is-armed' : '')}
@@ -120,7 +231,7 @@ function Card({ card, dragging, editing, armed, onDragStart, onDragEnd, onStartE
   )
 }
 
-export function KanbanPanel({ api }) {
+export function KanbanPanel({ api, runner }) {
   const [board, setBoard] = useState(null)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -128,7 +239,9 @@ export function KanbanPanel({ api }) {
   const [dropHint, setDropHint] = useState(null)
   const [composerColumn, setComposerColumn] = useState(null)
   const [editingId, setEditingId] = useState(null)
+  const [promptId, setPromptId] = useState(null)
   const [armedId, setArmedId] = useState(null)
+  const [runningId, setRunningId] = useState(null)
 
   const dragIdRef = useRef(null)
   dragIdRef.current = dragId
@@ -192,16 +305,17 @@ export function KanbanPanel({ api }) {
 
   const total = board?.cards?.length ?? 0
   const synced = board?.cards?.filter((card) => card.source?.kind === 'todo').length ?? 0
+  const withPrompt = board?.cards?.filter((card) => typeof card.prompt === 'string' && card.prompt.length > 0).length ?? 0
 
   const moveCard = (id, column, position) =>
     run(() => api.moveCard({ id, column, position }))
 
-  const addCard = async (column, text) => {
+  const addCard = async (column, text, prompt) => {
     const [firstLine, ...rest] = text.split('\n')
     const title = firstLine.trim()
     if (title.length === 0) return false
     const note = rest.join('\n').trim()
-    const value = await run(() => api.addCard({ title, note, column }))
+    const value = await run(() => api.addCard({ title, note, column, prompt }))
     if (value) setComposerColumn(null)
     return Boolean(value)
   }
@@ -213,9 +327,30 @@ export function KanbanPanel({ api }) {
     await run(() => api.updateCard({ id, title: trimmed }))
   }
 
+  const savePrompt = async (id, prompt) => {
+    setPromptId(null)
+    await run(() => api.setPrompt({ id, prompt }))
+  }
+
   const deleteCard = async (id) => {
     setArmedId(null)
     await run(() => api.deleteCard({ id }))
+  }
+
+  const executeCard = async (card) => {
+    if (!card.prompt || runningId) return
+    setRunningId(card.id)
+    setError(null)
+    try {
+      const sessionId = await runner.run(card.prompt)
+      const value = await api.markRun({ id: card.id, sessionId })
+      if (value?.board) setBoard(value.board)
+      runner.open(sessionId)
+    } catch (cause) {
+      setError(`执行失败：${cause?.message ?? String(cause)}`)
+    } finally {
+      setRunningId(null)
+    }
   }
 
   const computeDropIndex = (event, body) => {
@@ -244,7 +379,7 @@ export function KanbanPanel({ api }) {
           <div className="dkb-sub">
             {total === 0
               ? '还没有卡片'
-              : `${total} 张卡片${synced > 0 ? ` · ${synced} 张来自会话` : ''}`}
+              : `${total} 张卡片${synced > 0 ? ` · ${synced} 张来自会话` : ''}${withPrompt > 0 ? ` · ${withPrompt} 张有提示词` : ''}`}
           </div>
         </div>
         <div className="dkb-spacer" />
@@ -276,7 +411,9 @@ export function KanbanPanel({ api }) {
                 card={card}
                 dragging={dragId === card.id}
                 editing={editingId === card.id}
+                editingPrompt={promptId === card.id}
                 armed={armedId === card.id}
+                running={runningId === card.id}
                 onDragStart={(event) => {
                   setDragId(card.id)
                   event.dataTransfer.effectAllowed = 'move'
@@ -286,8 +423,13 @@ export function KanbanPanel({ api }) {
                 onStartEdit={() => setEditingId(card.id)}
                 onCommitEdit={(title) => renameCard(card.id, title)}
                 onCancelEdit={() => setEditingId(null)}
+                onStartPrompt={() => setPromptId(card.id)}
+                onSavePrompt={(prompt) => savePrompt(card.id, prompt)}
+                onCancelPrompt={() => setPromptId(null)}
                 onArmDelete={() => setArmedId(card.id)}
                 onDelete={() => deleteCard(card.id)}
+                onRun={() => executeCard(card)}
+                onOpenSession={(sessionId) => runner.open(sessionId)}
               />,
             )
           })
@@ -300,7 +442,7 @@ export function KanbanPanel({ api }) {
             children.push(
               <Composer
                 key="composer"
-                onSubmit={(text) => addCard(column.id, text)}
+                onSubmit={(text, prompt) => addCard(column.id, text, prompt)}
                 onCancel={() => setComposerColumn(null)}
               />,
             )
